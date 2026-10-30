@@ -10,3 +10,5 @@ The parameters are close estimates in that this is a 12 point star, at which poi
 
 This is the star with the default parameters:
 <img width="798" height="690" alt="Screenshot_2026-10-30_13-50-49" src="https://github.com/user-attachments/assets/f843633c-f3bd-48c3-92de-6ad6344f470f" />
+
+It was written using FreeCAD 26.3 RC2 but I don't think I used anything that would restrict it from another version.
