@@ -1,0 +1,147 @@
+import math
+import FreeCAD as App
+import Part
+from PySide import QtWidgets, QtCore
+
+class MoravianStarDialog(QtWidgets.QDialog):
+    def __init__(self):
+        super(MoravianStarDialog, self).__init__()
+        self.init_ui()
+        
+    def init_ui(self):
+        self.setWindowTitle("12-Point Moravian Star Generator")
+        self.resize(320, 200)
+        
+        # Main vertical layout
+        layout = QtWidgets.QVBoxLayout()
+        grid = QtWidgets.QGridLayout()
+        
+        # Form inputs: Labels & SpinBoxes
+        grid.addWidget(QtWidgets.QLabel("Base Radius (mm):"), 0, 0)
+        self.radius_input = QtWidgets.QDoubleSpinBox()
+        self.radius_input.setRange(1.0, 500.0)
+        self.radius_input.setValue(10.0)
+        grid.addWidget(self.radius_input, 0, 1)
+        
+        grid.addWidget(QtWidgets.QLabel("Spike Height (mm):"), 1, 0)
+        self.height_input = QtWidgets.QDoubleSpinBox()
+        self.height_input.setRange(1.0, 1000.0)
+        self.height_input.setValue(40.0)
+        grid.addWidget(self.height_input, 1, 1)
+        
+        grid.addWidget(QtWidgets.QLabel("Mount Hole Diameter (mm):"), 2, 0)
+        self.hole_dia_input = QtWidgets.QDoubleSpinBox()
+        self.hole_dia_input.setRange(0.0, 200.0)
+        self.hole_dia_input.setValue(10.0)
+        grid.addWidget(self.hole_dia_input, 2, 1)
+        
+        grid.addWidget(QtWidgets.QLabel("Mount Hole Depth (mm):"), 3, 0)
+        self.hole_depth_input = QtWidgets.QDoubleSpinBox()
+        self.hole_depth_input.setRange(0.0, 500.0)
+        self.hole_depth_input.setValue(25.0)
+        grid.addWidget(self.hole_depth_input, 3, 1)
+        
+        layout.addLayout(grid)
+        
+        # Action Button
+        self.generate_btn = QtWidgets.QPushButton("Generate Star")
+        self.generate_btn.clicked.connect(self.on_generate)
+        layout.addWidget(self.generate_btn)
+        
+        self.setLayout(layout)
+        
+    def on_generate(self):
+        # Extract fresh numbers directly from the input fields
+        r = self.radius_input.value()
+        h = self.height_input.value()
+        h_dia = self.hole_dia_input.value()
+        h_depth = self.hole_depth_input.value()
+        
+        # Call our solid structural core engine
+        build_mountable_12_point_star(r, h, h_dia, h_depth)
+        self.accept() # Close window smoothly after rendering
+
+def build_mountable_12_point_star(base_radius, point_height, hole_diameter, hole_depth):
+
+    doc = App.activeDocument()
+    if not doc:
+        doc = App.newDocument("MoravianStar12_Mountable")
+      
+    try:
+        phi = (1.0 + math.sqrt(5.0)) / 2.0
+        
+        true_12_axes = [
+            (0, 1, phi),   (0, 1, -phi),  (0, -1, phi),  (0, -1, -phi),
+            (1, phi, 0),   (1, -phi, 0),  (-1, phi, 0),  (-1, -phi, 0),
+            (phi, 0, 1),   (phi, 0, -1),  (-phi, 0, 1),  (-phi, 0, -1)
+        ]
+        
+        # 1. Build a sharp, solid 5-sided pyramid pointing straight up (Z-axis)
+        base_verts = []
+        for i in range(5):
+            angle = i * (2 * math.pi / 5.0)
+            x_val = base_radius * math.cos(angle)
+            y_val = base_radius * math.sin(angle)
+            base_verts.append(App.Vector(x_val, y_val, 0))
+            
+        tip = App.Vector(0, 0, point_height)
+        pyramid_faces = []
+        
+        for i in range(5):
+            v1 = base_verts[i]
+            v2 = base_verts[(i + 1) % 5]
+            wire = Part.Wire([Part.makeLine(v1, v2), Part.makeLine(v2, tip), Part.makeLine(tip, v1)])
+            pyramid_faces.append(Part.Face(wire))
+            
+        base_edges = [Part.makeLine(base_verts[i], base_verts[(i + 1) % 5]) for i in range(5)]
+        pyramid_faces.append(Part.Face(Part.Wire(base_edges)))
+        
+        single_point = Part.makeSolid(Part.makeShell(pyramid_faces))
+        
+        star_shape = None
+        
+        # 2. Duplicate, rotate, and fuse the points into the 12 spatial directions
+        for ax in true_12_axes:
+            ax_x, ax_y, ax_z = ax[0], ax[1], ax[2]
+            target_direction = App.Vector(ax_x, ax_y, ax_z).normalize()
+            
+            spike = single_point.copy()
+            
+            z_axis = App.Vector(0, 0, 1)
+            rotation_axis = z_axis.cross(target_direction)
+            
+            if rotation_axis.Length > 0.0001:
+                rotation_axis.normalize()
+                angle_deg = math.degrees(math.acos(z_axis.dot(target_direction)))
+                spike.rotate(App.Vector(0,0,0), rotation_axis, angle_deg)
+                
+            if star_shape is None:
+                star_shape = spike
+            else:
+                star_shape = star_shape.fuse(spike)
+                
+        # 3. Cut out the post pocket if size parameters are greater than 0
+        if hole_diameter > 0 and hole_depth > 0:
+            hole_radius = hole_diameter / 2.0
+            mount_tool = Part.makeCylinder(hole_radius, hole_depth*2, App.Vector(0, 0, -hole_depth*2), App.Vector(0, 0, 1), 360)
+            star_shape = star_shape.cut(mount_tool)
+        
+        # 4. Output geometry straight to document tree
+        star_feature = doc.addObject("Part::Feature", "Moravian Star")
+        star_feature.Shape = star_shape
+        star_feature.Label = "M-Star " + str(base_radius) + " br " + str(point_height) + " sh " + str(hole_radius) + " hdia " + str(hole_depth) + " hdep"
+        doc.recompute()
+        
+        if App.GuiUp:
+            import FreeCADGui as Gui
+            Gui.ActiveDocument.ActiveView.fitAll()
+            
+        print("Success! Custom parameterized star generated cleanly.")
+        
+    except Exception as err:
+        print("Generation failed: " + str(err))
+
+
+# Launch dialog directly inside FreeCAD UI main loop thread safely
+dialog = MoravianStarDialog()
+dialog.exec()

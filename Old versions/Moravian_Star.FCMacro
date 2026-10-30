@@ -1,0 +1,98 @@
+import math
+import FreeCAD as App
+import Part
+
+def create_perfect_12_point_star(core_radius=20.0, point_height=35.0):
+    """
+    Generates a 12-pointed Moravian Star by programmatically 
+    calculating the 12 symmetrical face directions of a dodecahedron.
+    """
+    doc = App.activeDocument()
+    if not doc:
+        doc = App.newDocument("MoravianStar12")
+        
+    phi = (1.0 + math.sqrt(5.0)) / 2.0
+    
+    # The 12 primary directional axes for the 12 points of the star
+    axes = [
+        (0, 1, phi),   (0, 1, -phi),  (0, -1, phi),  (0, -1, -phi),
+        (1, phi, 0),   (1, -phi, 0),  (-1, phi, 0),  (-1, -phi, 0),
+        (phi, 0, 1),   (phi, 0, -1),  (-phi, 0, 1),  (-phi, 0, -1)
+    ]
+    
+    # Normalize our direction vectors
+    normals = []
+    for ax in axes:
+        length = math.sqrt(ax[0]**2 + ax[1]**2 + ax[2]**2)
+        normals.append(App.Vector(ax[0]/length, ax[1]/length, ax[2]/length))
+        
+    pyramid_solids = []
+    
+    # Build a 5-sided pyramid along each of the 12 axes
+    for i, normal in enumerate(normals):
+        # Calculate where the flat base of this point sits
+        face_center = normal * core_radius
+        # Calculate where the sharp tip of this point sits
+        tip_vertex = normal * (core_radius + point_height)
+        
+        # Sort all other normals to find the 5 closest neighboring points
+        neighbor_dots = []
+        for j, other_normal in enumerate(normals):
+            if i != j:
+                dot_product = normal.dot(other_normal)
+                neighbor_dots.append((dot_product, other_normal))
+        neighbor_dots.sort(reverse=True, key=lambda x: x[0])
+        
+        # Pull the 5 closest neighboring directions
+        closest_normals = [neighbor_dots[k][1] for k in range(5)]
+        
+        # Project neighbors onto the flat plane of the base to find the 5 base corners
+        base_verts = []
+        for c_normal in closest_normals:
+            # Mathematical intersection to find perfect regular pentagon corners
+            bisector = (normal + c_normal).normalize()
+            corner = bisector * (core_radius / normal.dot(bisector))
+            base_verts.append(corner)
+            
+        # Ensure the vertices circle in order around the center axis
+        ref_vector = (base_verts[0] - face_center).normalize()
+        cross_vector = normal.cross(ref_vector)
+        
+        def get_angle(v):
+            relative = (v - face_center).normalize()
+            x = relative.dot(ref_vector)
+            y = relative.dot(cross_vector)
+            return math.atan2(y, x)
+            
+        base_verts.sort(key=get_angle)
+        
+        # Generate the 5 triangular side faces of the point
+        pyramid_faces = []
+        for k in range(5):
+            v1 = base_verts[k]
+            v2 = base_verts[(k + 1) % 5]
+            
+            wire = Part.Wire([Part.makeLine(v1, v2), Part.makeLine(v2, tip_vertex), Part.makeLine(tip_vertex, v1)])
+            pyramid_faces.append(Part.Face(wire))
+            
+        # Generate the 1 flat pentagonal bottom face
+        base_edges = [Part.makeLine(base_verts[k], base_verts[(k + 1) % 5]) for k in range(5)]
+        pyramid_faces.append(Part.Face(Part.Wire(base_edges)))
+        
+        # Build the solid point
+        shell = Part.makeShell(pyramid_faces)
+        solid = Part.makeSolid(shell)
+        pyramid_solids.append(solid)
+        
+    # Fuse all 12 solid pieces together cleanly
+    star_shape = pyramid_solids[0]
+    for next_solid in pyramid_solids[1:]:
+        star_shape = star_shape.fuse(next_solid)
+        
+    # Send it straight into your document tree view
+    star_obj = doc.addObject("Part::Feature", "MoravianStar12")
+    star_obj.Shape = star_shape
+    doc.recompute()
+
+# Execute code
+create_perfect_12_point_star(core_radius=20.0, point_height=35.0)

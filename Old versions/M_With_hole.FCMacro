@@ -1,0 +1,87 @@
+import math
+import FreeCAD as App
+import Part
+
+def build_mountable_12_point_star(base_radius=10.0, point_height=40.0, hole_diameter=10.0, hole_depth=25.0):
+    doc = App.activeDocument()
+    if not doc:
+        doc = App.newDocument("MoravianStar12_Mountable")
+        
+    try:
+        phi = (1.0 + math.sqrt(5.0)) / 2.0
+        
+        # Symmetrical 3D directions for a true 12-point layout
+        true_12_axes = [
+            (0, 1, phi),   (0, 1, -phi),  (0, -1, phi),  (0, -1, -phi),
+            (1, phi, 0),   (1, -phi, 0),  (-1, phi, 0),  (-1, -phi, 0),
+            (phi, 0, 1),   (phi, 0, -1),  (-phi, 0, 1),  (-phi, 0, -1)
+        ]
+        
+        # 1. Build a sharp, solid 5-sided pyramid pointing straight up (Z-axis)
+        base_verts = []
+        for i in range(5):
+            angle = i * (2 * math.pi / 5.0)
+            x_val = base_radius * math.cos(angle)
+            y_val = base_radius * math.sin(angle)
+            base_verts.append(App.Vector(x_val, y_val, 0))
+            
+        tip = App.Vector(0, 0, point_height)
+        pyramid_faces = []
+        
+        for i in range(5):
+            v1 = base_verts[i]
+            v2 = base_verts[(i + 1) % 5]
+            wire = Part.Wire([Part.makeLine(v1, v2), Part.makeLine(v2, tip), Part.makeLine(tip, v1)])
+            pyramid_faces.append(Part.Face(wire))
+            
+        base_edges = [Part.makeLine(base_verts[i], base_verts[(i + 1) % 5]) for i in range(5)]
+        pyramid_faces.append(Part.Face(Part.Wire(base_edges)))
+        
+        single_point = Part.makeSolid(Part.makeShell(pyramid_faces))
+        
+        star_shape = None
+        
+        # 2. Duplicate, rotate, and fuse the points into the 12 spatial directions
+        for ax in true_12_axes:
+            # Unpack components explicitly to fix the Vector generation error
+            ax_x, ax_y, ax_z = ax[0], ax[1], ax[2]
+            target_direction = App.Vector(ax_x, ax_y, ax_z).normalize()
+            
+            spike = single_point.copy()
+            
+            z_axis = App.Vector(0, 0, 1)
+            rotation_axis = z_axis.cross(target_direction)
+            
+            if rotation_axis.Length > 0.0001:
+                rotation_axis.normalize()
+                angle_deg = math.degrees(math.acos(z_axis.dot(target_direction)))
+                spike.rotate(App.Vector(0,0,0), rotation_axis, angle_deg)
+                
+            if star_shape is None:
+                star_shape = spike
+            else:
+                star_shape = star_shape.fuse(spike)
+                
+        # 3. Create a solid cylinder tool along the negative Z-axis for the mount pocket
+        hole_radius = hole_diameter / 2.0
+        mount_tool = Part.makeCylinder(hole_radius, hole_depth, App.Vector(0, 0, -hole_depth), App.Vector(0, 0, 1), 360)
+        
+        # Cut the post socket out from the solid star geometry
+        final_star_with_mount = star_shape.cut(mount_tool)
+        
+        # 4. Output the finalized mountable geometry straight to the workspace tree
+        star_feature = doc.addObject("Part::Feature", "MoravianStar_With_Mount")
+        star_feature.Shape = final_star_with_mount
+        doc.recompute()
+        
+        if App.GuiUp:
+            import FreeCADGui as Gui
+            Gui.ActiveDocument.ActiveView.fitAll()
+            
+        print("Success! Mountable 12-point star with a post pocket generated cleanly.")
+        
+    except Exception as err:
+        print("Generation failed: " + str(err))
+
+# Run the modified script
+build_mountable_12_point_star(base_radius=10.0, point_height=80.0, hole_diameter=5.0, hole_depth=25.0)
