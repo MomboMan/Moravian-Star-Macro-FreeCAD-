@@ -1,8 +1,8 @@
 __Name__ = 'Moravian Star'
 __Comment__ = 'A FreeCAD macro that creates a Moravian Star. It is a 12 point version of the star that is hollow.'
 __Author__ = 'Craig Drinnan'
-__Date__ = '2026-10-30'
-__Version__ = '2.0 beta'
+__Date__ = '2026-11-05'
+__Version__ = '2.1 beta'
 __License__ = 'GPL-3.0-or-later'
 __Web__ = 'https://github.com/MomboMan/Moravian-Star-Macro-FreeCAD-'
 __Wiki__ = ''
@@ -54,14 +54,15 @@ class MoravianStarDialog(QtWidgets.QDialog):
         widget += 1    
 
         grid.addWidget(QtWidgets.QLabel("Make Hollow:"), widget, 0)
-        self.hollow_toggle = QtWidgets.QCheckBox()
-        self.hollow_toggle.setChecked(True)
-        self.hollow_toggle.stateChanged.connect(self.toggle_hollow_inputs)
-        grid.addWidget(self.hollow_toggle, widget, 1)
+        self.make_hollow = QtWidgets.QCheckBox()
+        self.make_hollow.setChecked(True)
+        self.make_hollow.stateChanged.connect(self.toggle_hollow_inputs)
+        grid.addWidget(self.make_hollow, widget, 1)
         widget += 1    
-        
+                
         # UI addition for Wall Thickness
-        grid.addWidget(QtWidgets.QLabel("Wall Thickness (mm):"), widget, 0)
+        self.wall_thickness_Label = QtWidgets.QLabel("Wall Thickness (mm):")
+        grid.addWidget(self.wall_thickness_Label, widget, 0)
         self.thick_input = QtWidgets.QDoubleSpinBox()
         self.thick_input.setRange(0.2, 10.0)
         self.thick_input.setValue(1.2)
@@ -69,27 +70,31 @@ class MoravianStarDialog(QtWidgets.QDialog):
         widget += 1    
         
         grid.addWidget(QtWidgets.QLabel("Create Mount Hole:"), widget, 0)
-        self.hole_toggle = QtWidgets.QCheckBox()
-        self.hole_toggle.setChecked(True)
-        self.hole_toggle.stateChanged.connect(self.toggle_hole_inputs)
-        grid.addWidget(self.hole_toggle, widget, 1)
+        self.create_mount_hole = QtWidgets.QCheckBox()
+        self.create_mount_hole.setChecked(True)
+        self.create_mount_hole.stateChanged.connect(self.toggle_hole_inputs)
+        grid.addWidget(self.create_mount_hole, widget, 1)
         widget += 1    
         
-        grid.addWidget(QtWidgets.QLabel("Through All:"), widget, 0)
-        self.through_hole = QtWidgets.QCheckBox()
-        self.through_hole.setChecked(False)
-        self.through_hole.stateChanged.connect(self.through_hole_inputs)
-        grid.addWidget(self.through_hole, widget, 1)
+
+        self.through_all_Label = QtWidgets.QLabel("Through All:")
+        grid.addWidget(self.through_all_Label, widget, 0)
+        self.through_all = QtWidgets.QCheckBox()
+        self.through_all.setChecked(False)
+        self.through_all.stateChanged.connect(self.through_all_inputs)
+        grid.addWidget(self.through_all, widget, 1)
         widget += 1    
         
-        grid.addWidget(QtWidgets.QLabel("Mount Hole Diameter (mm):"), widget, 0)
-        self.hole_dia_input = QtWidgets.QDoubleSpinBox()
-        self.hole_dia_input.setRange(0.0, 200.0)
-        self.hole_dia_input.setValue(5.0)
-        grid.addWidget(self.hole_dia_input, widget, 1)
+        self.mount_hole_dia_Label = QtWidgets.QLabel("Mount Hole Diameter (mm):")
+        grid.addWidget(self.mount_hole_dia_Label, widget, 0)
+        self.mount_hole_dia_input = QtWidgets.QDoubleSpinBox()
+        self.mount_hole_dia_input.setRange(0.0, 200.0)
+        self.mount_hole_dia_input.setValue(5.0)
+        grid.addWidget(self.mount_hole_dia_input, widget, 1)
         widget += 1    
         
-        grid.addWidget(QtWidgets.QLabel("Mount Hole Depth (mm):"), widget, 0)
+        self.hole_depth_Label = QtWidgets.QLabel("Mount Hole Depth (mm):")
+        grid.addWidget(self.hole_depth_Label, widget, 0)
         self.hole_depth_input = QtWidgets.QDoubleSpinBox()
         self.hole_depth_input.setRange(0.0, 500.0)
         self.hole_depth_input.setValue(5.0)
@@ -105,28 +110,49 @@ class MoravianStarDialog(QtWidgets.QDialog):
         self.setLayout(layout)
         
     def toggle_hollow_inputs(self, state:bool):
+        self.wall_thickness_Label.setEnabled(state)
         self.thick_input.setEnabled(state)
         
     def toggle_hole_inputs(self, state):
-        self.hole_dia_input.setEnabled(state)
-        self.hole_depth_input.setEnabled(state)
-        self.through_hole.setEnabled(state)
+        if self.create_mount_hole.isChecked():
+            self.through_all_Label.setEnabled(True)
+            self.through_all.setEnabled(True)
+            self.hole_depth_Label.setEnabled(True)
+            self.hole_depth_input.setEnabled(True)
+            self.mount_hole_dia_Label.setEnabled(True)
+            self.mount_hole_dia_input.setEnabled(True)
+            if self.through_all.isChecked():
+                self.hole_depth_Label.setEnabled(False)
+                self.hole_depth_input.setEnabled(False)
+            else:
+                self.hole_depth_Label.setEnabled(True)
+                self.hole_depth_input.setEnabled(True)
+        else:
+            self.through_all_Label.setEnabled(False)
+            self.through_all.setEnabled(False)
+            self.mount_hole_dia_Label.setEnabled(False)
+            self.mount_hole_dia_input.setEnabled(False)
+            self.hole_depth_Label.setEnabled(False)
+            self.hole_depth_input.setEnabled(False)
 
-    def through_hole_inputs(self, state):
+            
+    def through_all_inputs(self, state):
+        self.hole_depth_Label.setEnabled(not state)
         self.hole_depth_input.setEnabled(not state)
+        
         
     def on_generate(self):
         r = self.radius_input.value()
         h = self.height_input.value()
         sides = self.sides_input.value()
-        hollow = self.hollow_toggle.isChecked()
+        hollow = self.make_hollow.isChecked()
         if hollow:
             thick = self.thick_input.value()
         else:
             thick = 0.0
                 
-        if self.hole_toggle.isChecked():
-            h_dia = self.hole_dia_input.value()
+        if self.create_mount_hole.isChecked():
+            h_dia = self.mount_hole_dia_input.value()
             h_depth = self.hole_depth_input.value()
         else:
             h_dia = 0.0
