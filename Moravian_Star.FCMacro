@@ -246,8 +246,7 @@ def build_mountable_12_point_star(base_radius, point_height, sides, hole_diamete
             import FreeCADGui as Gui
             Gui.ActiveDocument.ActiveView.fitAll()
             Gui.Selection.clearSelection()
-            Gui.ActiveDocument.ActiveView.setActiveObject("pdbody", body)
-            
+                        
         print("Success! Hollow core star generated smoothly using pre-hollowed components.")
 
     except Exception as err:
